@@ -1,0 +1,38 @@
+{
+  "name": "@reno/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint'",
+    "deploy": "wrangler pages deploy dist"
+  },
+  "dependencies": {
+    "@auth0/auth0-react": "^2.2.4",
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
+    "@mui/icons-material": "^6.1.9",
+    "@mui/material": "^6.1.9",
+    "@reno/shared": "workspace:*",
+    "@reno/splat-trainer": "workspace:*",
+    "@reno/splat-viewer": "workspace:*",
+    "@tanstack/react-query": "^5.62.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.14",
+    "@types/react-dom": "^18.3.3",
+    "@types/webxr": "^0.5.20",
+    "@webgpu/types": "^0.1.52",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wrangler": "^4.80.0"
+  }
+}

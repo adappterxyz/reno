@@ -1,0 +1,25 @@
+{
+  "name": "@reno/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint'",
+    "db:migrate:local": "wrangler d1 migrations apply reno --local",
+    "db:migrate:remote": "wrangler d1 migrations apply reno --remote"
+  },
+  "dependencies": {
+    "@reno/shared": "workspace:*",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241216.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.80.0"
+  }
+}

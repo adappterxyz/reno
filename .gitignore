@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.turbo/
+.wrangler/
+.dev.vars
+*.local
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+# large binary / model artifacts
+*.ply
+*.sog
+*.splat
+/tmp-captures/

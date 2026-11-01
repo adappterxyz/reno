@@ -1,0 +1,41 @@
+name = "reno-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# --- D1 (relational data: projects, splat models, tickets, measurements, users, ...) ---
+[[d1_databases]]
+binding = "DB"
+database_name = "reno"
+database_id = "PLACEHOLDER_CREATE_WITH_wrangler_d1_create_reno"
+migrations_dir = "migrations"
+
+# --- R2 (splat files, raw capture frames, thumbnails) ---
+[[r2_buckets]]
+binding = "SPLATS"
+bucket_name = "reno-splats"
+
+# --- Durable Object: per-model job state machine + resumable upload coordination ---
+[[durable_objects.bindings]]
+name = "SPLAT_JOB"
+class_name = "SplatJob"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SplatJob"]
+
+# --- KV (cache: JWKS, sessions) ---
+[[kv_namespaces]]
+binding = "CACHE"
+id = "PLACEHOLDER_CREATE_WITH_wrangler_kv_namespace_create_CACHE"
+
+[vars]
+# Public, non-secret config. Secrets (none required for Auth0 verification) go via `wrangler secret put`.
+AUTH0_DOMAIN = "your-tenant.us.auth0.com"
+AUTH0_AUDIENCE = "https://api.renosphere.co"
+CORS_ORIGIN = "http://localhost:5173"
+# Dev-only fallback; in production set a real secret:  wrangler secret put SIGNING_SECRET
+SIGNING_SECRET = "dev-insecure-signing-secret-change-me"
+
+[observability]
+enabled = true

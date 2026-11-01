@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "noEmit": true,
+    "types": ["vite/client", "webxr", "@webgpu/types"],
+    "paths": {
+      "@reno/shared": ["../../packages/shared/src/index.ts"],
+      "@reno/splat-viewer": ["../../packages/splat-viewer/src/index.ts"],
+      "@reno/splat-trainer": ["../../packages/splat-trainer/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "vite.config.ts"]
+}
