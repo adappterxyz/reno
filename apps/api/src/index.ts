@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import type { Env, Variables } from "./env.js";
 import { requireAuth } from "./auth.js";
 import { ok } from "./lib/http.js";
+import auth from "./routes/auth.js";
 import projects from "./routes/projects.js";
 import splatModels from "./routes/splatModels.js";
 import annotations from "./routes/annotations.js";
@@ -24,8 +25,11 @@ app.use("*", async (c, next) => {
 // Public health check.
 app.get("/api/health", (c) => ok(c, { status: "up", ts: new Date().toISOString() }));
 
-// Public, signature-validated splat file serving (no Auth0 bearer possible here).
+// Public, signature-validated splat file serving (no bearer possible here).
 app.route("/api", files);
+
+// Public auth routes (email OTP request/verify).
+app.route("/api", auth);
 
 // Everything else requires a valid Auth0 token.
 const api = new Hono<{ Bindings: Env; Variables: Variables }>();

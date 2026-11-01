@@ -4,17 +4,23 @@ export interface Env {
   SPLATS: R2Bucket;
   CACHE: KVNamespace;
   SPLAT_JOB: DurableObjectNamespace;
-  AUTH0_DOMAIN: string;
-  AUTH0_AUDIENCE: string;
   CORS_ORIGIN: string;
-  /** HMAC secret for signed splat-file URLs. Set via `wrangler secret put SIGNING_SECRET`. */
+  /** HMAC secret for signed splat-file URLs AND session JWT signing. */
   SIGNING_SECRET: string;
+  /** App display name used in OTP emails. */
+  APP_NAME: string;
+  /** From address for OTP emails, e.g. "Reno <login@adappter.xyz>". */
+  OTP_FROM_EMAIL: string;
+  /** When "true", the OTP is logged and returned in the request response (dev only). */
+  OTP_DEV_MODE: string;
+  /** Resend API key (secret). If unset, email sending is skipped (dev fallback). */
+  RESEND_API_KEY?: string;
 }
 
 /** Authenticated user context attached to requests by the auth middleware. */
 export interface AuthUser {
-  sub: string; // Auth0 subject (stable user id)
-  email?: string;
+  sub: string; // app user id
+  email: string;
   roles: string[];
 }
 

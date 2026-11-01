@@ -4,38 +4,30 @@ import { ok, err, newId, nowIso } from "../lib/http.js";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-/** Upsert the app-local user row from the verified Auth0 identity. */
-async function upsertUser(c: { env: Env; get: (k: "user") => Variables["user"] }) {
-  const user = c.get("user");
-  const existing = await c.env.DB.prepare("SELECT id, role FROM users WHERE auth0_sub = ?")
-    .bind(user.sub)
-    .first<{ id: string; role: string }>();
-  if (existing) return existing;
-  const id = newId("usr");
-  // First user role: prefer an Auth0 role claim, else default Staff.
-  const role = user.roles[0] ?? "Staff";
-  await c.env.DB.prepare(
-    "INSERT INTO users (id, auth0_sub, email, role, status, date_added) VALUES (?, ?, ?, ?, 'Active', ?)",
-  )
-    .bind(id, user.sub, user.email ?? null, role, nowIso())
-    .run();
-  return { id, role };
-}
-
+// Current authenticated user (protected).
 app.get("/auth/me", async (c) => {
-  const profile = await upsertUser(c);
-  const user = c.get("user");
-  return ok(c, { id: profile.id, sub: user.sub, email: user.email, role: profile.role });
+  const u = c.get("user");
+  const row = await c.env.DB.prepare(
+    "SELECT id, email, role, display_name FROM users WHERE id = ?",
+  )
+    .bind(u.sub)
+    .first();
+  if (!row) return err(c, "User not found", 404);
+  return ok(c, row);
 });
 
-// List projects (Superadmin sees all; others see assigned — assignment port is Phase 4,
-// so for now non-superadmins see projects they created).
+function isSuperadmin(c: { get: (k: "user") => Variables["user"] }) {
+  return c.get("user").roles.includes("Superadmin");
+}
+
+// List projects (Superadmin sees all; others see what they created — assignment
+// port is Phase 4).
 app.get("/projects", async (c) => {
-  const profile = await upsertUser(c);
   const user = c.get("user");
-  const isSuper = profile.role === "Superadmin" || user.roles.includes("Superadmin");
-  const rows = isSuper
-    ? await c.env.DB.prepare("SELECT * FROM projects WHERE status != 'Deleted' ORDER BY date_added DESC").all()
+  const rows = isSuperadmin(c)
+    ? await c.env.DB.prepare(
+        "SELECT * FROM projects WHERE status != 'Deleted' ORDER BY date_added DESC",
+      ).all()
     : await c.env.DB.prepare(
         "SELECT * FROM projects WHERE status != 'Deleted' AND created_by = ? ORDER BY date_added DESC",
       )
@@ -45,7 +37,6 @@ app.get("/projects", async (c) => {
 });
 
 app.post("/projects", async (c) => {
-  await upsertUser(c);
   const user = c.get("user");
   const body = (await c.req.json().catch(() => ({}))) as { name?: string; location?: string };
   if (!body.name) return err(c, "name required", 422);

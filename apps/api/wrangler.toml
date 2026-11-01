@@ -30,12 +30,14 @@ binding = "CACHE"
 id = "8fb2fc0d334b4719a03db12f15efac1f"
 
 [vars]
-# Public, non-secret config. Secrets (none required for Auth0 verification) go via `wrangler secret put`.
-AUTH0_DOMAIN = "your-tenant.us.auth0.com"
-AUTH0_AUDIENCE = "https://api.renosphere.co"
+# Public, non-secret config. Secrets go via `wrangler secret put`.
 CORS_ORIGIN = "http://localhost:5173"
-# SIGNING_SECRET is a secret, NOT a var — set via `wrangler secret put SIGNING_SECRET`.
-# (For local dev, put it in apps/api/.dev.vars, which is gitignored.)
+APP_NAME = "Reno"
+OTP_FROM_EMAIL = "Reno <login@adappter.xyz>"
+# Dev: returns/logs the OTP so sign-in works without email infra. Set to "false" in prod.
+OTP_DEV_MODE = "true"
+# Secrets (NOT vars): SIGNING_SECRET (sessions + file URLs), RESEND_API_KEY (email).
+# Set via `wrangler secret put ...`; for local dev use apps/api/.dev.vars (gitignored).
 
 [observability]
 enabled = true

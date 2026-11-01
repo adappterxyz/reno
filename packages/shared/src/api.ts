@@ -15,7 +15,8 @@ export const API_BASE_PATH = "/api";
 /** Route constants shared by client and server to avoid string drift. */
 export const routes = {
   health: `${API_BASE_PATH}/health`,
-  login: `${API_BASE_PATH}/auth/login`,
+  otpRequest: `${API_BASE_PATH}/auth/otp/request`,
+  otpVerify: `${API_BASE_PATH}/auth/otp/verify`,
   me: `${API_BASE_PATH}/auth/me`,
   projects: `${API_BASE_PATH}/projects`,
   project: (id: string) => `${API_BASE_PATH}/projects/${id}`,
