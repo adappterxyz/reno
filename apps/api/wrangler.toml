@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "reno"
-database_id = "PLACEHOLDER_CREATE_WITH_wrangler_d1_create_reno"
+database_id = "f3a53689-0ee2-4195-ba5a-784155fe3406"
 migrations_dir = "migrations"
 
 # --- R2 (splat files, raw capture frames, thumbnails) ---
@@ -27,15 +27,15 @@ new_sqlite_classes = ["SplatJob"]
 # --- KV (cache: JWKS, sessions) ---
 [[kv_namespaces]]
 binding = "CACHE"
-id = "PLACEHOLDER_CREATE_WITH_wrangler_kv_namespace_create_CACHE"
+id = "8fb2fc0d334b4719a03db12f15efac1f"
 
 [vars]
 # Public, non-secret config. Secrets (none required for Auth0 verification) go via `wrangler secret put`.
 AUTH0_DOMAIN = "your-tenant.us.auth0.com"
 AUTH0_AUDIENCE = "https://api.renosphere.co"
 CORS_ORIGIN = "http://localhost:5173"
-# Dev-only fallback; in production set a real secret:  wrangler secret put SIGNING_SECRET
-SIGNING_SECRET = "dev-insecure-signing-secret-change-me"
+# SIGNING_SECRET is a secret, NOT a var — set via `wrangler secret put SIGNING_SECRET`.
+# (For local dev, put it in apps/api/.dev.vars, which is gitignored.)
 
 [observability]
 enabled = true
