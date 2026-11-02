@@ -4,6 +4,10 @@ Cloudflare-native renovation-management app with **client-side 3D Gaussian-splat
 
 - **3D is fully client-side.** Splats are *trained* in the browser (WebGPU, via Brush) and *rendered* in the browser (PlayCanvas, WebGL2 fallback). Cloudflare is pure storage + orchestration + serving — no server GPU.
 - **Tickets & measurements** are anchored to 3D points on the splat, replacing Matterport Mattertags and the Measurements tool.
+- **Single Worker, one origin.** The built SPA (`apps/web/dist`) is served as static assets by the *same* Worker that handles `/api/*` — no separate frontend host, no CORS. SPA routes fall back to `index.html`; `/api/*` runs the Worker first.
+- **Self-hosted email-OTP auth** (no third-party IdP). No external dependencies at all.
+
+**Live:** https://reno-api.uranusim.workers.dev
 
 See the full design in `../.claude/plans/quiet-forging-map.md`.
 
@@ -33,20 +37,23 @@ cd apps/api
 wrangler d1 create reno                       # -> database_id
 wrangler kv namespace create CACHE            # -> kv id
 wrangler r2 bucket create reno-splats
-wrangler d1 migrations apply reno --local     # apply schema locally
-wrangler secret put SIGNING_SECRET            # prod only; dev uses the toml fallback
+wrangler d1 migrations apply reno --remote    # apply schema (or --local for dev)
+wrangler secret put SIGNING_SECRET            # sessions + signed file URLs
 
-# Frontend env
+# (optional) real email delivery — otherwise dev mode returns the OTP in the response
+wrangler secret put RESEND_API_KEY            # and set OTP_DEV_MODE=false in wrangler.toml
+
+# Frontend env (for running the web dev server separately)
 cd ../web
-cp .env.example .env.local                    # fill Auth0 + API base
+cp .env.example .env.local                    # VITE_API_BASE=http://localhost:8787
 ```
 
-### Auth0
+### Auth = self-hosted email OTP
 
-- Create a **SPA** application → set its Client ID in `web/.env.local` (`VITE_AUTH0_CLIENT_ID`).
-- Create an **API** with identifier `https://api.renosphere.co` → set `VITE_AUTH0_AUDIENCE` and `AUTH0_AUDIENCE` (wrangler.toml).
-- Add an Auth0 **Action** to put roles in the `https://renosphere.co/roles` claim (see `apps/api/src/auth.ts`).
-- Allowed Callback/Logout/Web Origins: `http://localhost:5173`.
+No third-party IdP. Sign-in: enter email → 6-digit code → session JWT. In dev
+(`OTP_DEV_MODE=true`) the code is returned in the request response and logged, so
+sign-in works with zero email setup. For real emails, set `RESEND_API_KEY`, verify
+the `OTP_FROM_EMAIL` sender domain in Resend, and set `OTP_DEV_MODE=false`.
 
 ### Brush training worker (in-browser splat training)
 
@@ -61,17 +68,27 @@ flow end to end.
 
 ```bash
 # API (Workers) — needs Node 22+
-cd apps/api && pnpm dev          # http://localhost:8787
+cd apps/api && pnpm dev          # http://localhost:8787  (serves /api)
 
-# Web
+# Web (separate dev server with HMR; calls the API at VITE_API_BASE)
 cd apps/web && pnpm dev          # http://localhost:5173
 ```
+
+## Deploy (single Worker: SPA + API, one origin)
+
+```bash
+pnpm deploy        # builds apps/web then `wrangler deploy` the Worker with the dist assets
+```
+
+The Worker serves the SPA as static assets and runs the Worker first only for
+`/api/*` (see `apps/api/wrangler.toml` `[assets]`). Production builds use
+`apps/web/.env.production` (`VITE_API_BASE=` → same-origin).
 
 ## Validate
 
 ```bash
 pnpm -r typecheck                # all packages
-cd apps/web && pnpm build        # production web bundle
+pnpm build:web                   # production web bundle
 ```
 
 ## Phase-1 go/no-go gate
