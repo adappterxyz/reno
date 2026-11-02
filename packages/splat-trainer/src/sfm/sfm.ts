@@ -1,6 +1,7 @@
 import type { NerfDataset, TrainingProgress } from "../types.js";
 import { loadOpenCV } from "./opencvLoader.js";
 import type { ColoredPoint } from "./ply.js";
+import { estimatePose } from "./twoview.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // OpenCV.js has no types; `any` for the cv module and its Mats.
@@ -137,7 +138,7 @@ export async function runSfmOnDataset(
     let tUnit: Vec3 | null = null;
     let inlierMask: Uint8Array | null = null;
     if (good.length >= minMatches) {
-      const est = essential(cv, frames[i - 1]!, frames[i]!, good, K);
+      const est = essential(frames[i - 1]!, frames[i]!, good, K);
       if (est) {
         R = est.R;
         tUnit = est.t;
@@ -258,46 +259,18 @@ function matchCross(cv: any, matcher: any, desA: any, desB: any): Array<{ a: num
   return out;
 }
 
-// ---------- geometry (OpenCV for essential; pure-JS for the rest) ----------
+// ---------- geometry (pure-JS essential matrix; OpenCV only does ORB+matching) ----------
 function essential(
-  cv: any,
   a: Frame,
   b: Frame,
   good: Array<{ a: number; b: number }>,
   K: { f: number; cx: number; cy: number },
 ): { R: number[][]; t: Vec3; mask: Uint8Array } | null {
-  const pa: number[] = [];
-  const pb: number[] = [];
-  for (const m of good) {
-    pa.push(a.kps[m.a]!.x, a.kps[m.a]!.y);
-    pb.push(b.kps[m.b]!.x, b.kps[m.b]!.y);
-  }
-  const matA = cv.matFromArray(good.length, 1, cv.CV_64FC2, pa);
-  const matB = cv.matFromArray(good.length, 1, cv.CV_64FC2, pb);
-  const Kmat = cv.matFromArray(3, 3, cv.CV_64F, [K.f, 0, K.cx, 0, K.f, K.cy, 0, 0, 1]);
-  const maskMat = new cv.Mat();
-  const E = cv.findEssentialMat(matA, matB, Kmat, cv.RANSAC, 0.999, 1.0, maskMat);
-  let result: { R: number[][]; t: Vec3; mask: Uint8Array } | null = null;
-  if (E.rows === 3 && E.cols === 3) {
-    const R = new cv.Mat();
-    const t = new cv.Mat();
-    cv.recoverPose(E, matA, matB, Kmat, R, t, maskMat);
-    const mask = new Uint8Array(good.length);
-    for (let i = 0; i < good.length; i++) mask[i] = maskMat.ucharAt(i, 0);
-    result = {
-      R: readMat3(R),
-      t: [t.doubleAt(0, 0), t.doubleAt(1, 0), t.doubleAt(2, 0)],
-      mask,
-    };
-    R.delete();
-    t.delete();
-  }
-  matA.delete();
-  matB.delete();
-  Kmat.delete();
-  maskMat.delete();
-  E.delete();
-  return result;
+  const ptsA = good.map((m) => [a.kps[m.a]!.x, a.kps[m.a]!.y] as [number, number]);
+  const ptsB = good.map((m) => [b.kps[m.b]!.x, b.kps[m.b]!.y] as [number, number]);
+  const pose = estimatePose(ptsA, ptsB, K);
+  if (!pose) return null;
+  return { R: pose.R, t: pose.t as Vec3, mask: pose.mask };
 }
 
 /** Triangulate a correspondence given two world->cam poses. Returns world point or null. */
