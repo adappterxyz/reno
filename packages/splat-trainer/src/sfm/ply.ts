@@ -10,18 +10,25 @@ export interface ColoredPoint {
 
 const SH_C0 = 0.28209479177387814;
 
+// Gaussian-splat PLY vertex properties, in order (all float32).
+const PROPS = [
+  "x", "y", "z",
+  "f_dc_0", "f_dc_1", "f_dc_2",
+  "opacity",
+  "scale_0", "scale_1", "scale_2",
+  "rot_0", "rot_1", "rot_2", "rot_3",
+];
+
 /**
- * Write a colored point cloud as a Gaussian-splat .ply (ASCII) that PlayCanvas'
- * gsplat loader accepts. Each point becomes one small, opaque, axis-aligned
- * Gaussian — a sparse "point-cloud splat". Colors go into the SH DC term.
- *
- * This is a preview-quality result (no training/densification). Splat radius is
- * derived from the scene bounding box so it looks reasonable at any scale.
+ * Write a colored point cloud as a binary little-endian Gaussian-splat .ply that
+ * PlayCanvas' gsplat loader accepts (binary is the universally-supported format;
+ * ASCII gsplat PLY is not reliably parsed). Each point becomes one small, opaque,
+ * axis-aligned Gaussian — a sparse "point-cloud splat". Colors go into the SH DC
+ * term. Splat radius is derived from the scene bounding box.
  */
 export function pointsToSplatPly(points: ColoredPoint[]): Blob {
   if (points.length === 0) throw new Error("No points to export");
 
-  // Scene extent -> per-splat radius.
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (const p of points) {
@@ -36,27 +43,31 @@ export function pointsToSplatPly(points: ColoredPoint[]): Blob {
 
   const header =
     "ply\n" +
-    "format ascii 1.0\n" +
+    "format binary_little_endian 1.0\n" +
     `element vertex ${points.length}\n` +
-    "property float x\nproperty float y\nproperty float z\n" +
-    "property float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\n" +
-    "property float opacity\n" +
-    "property float scale_0\nproperty float scale_1\nproperty float scale_2\n" +
-    "property float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\n" +
+    PROPS.map((p) => `property float ${p}\n`).join("") +
     "end_header\n";
 
-  const lines: string[] = [header];
+  const headerBytes = new TextEncoder().encode(header);
+  const stride = PROPS.length * 4; // 14 float32 per vertex
+  const buf = new ArrayBuffer(headerBytes.length + points.length * stride);
+  const bytes = new Uint8Array(buf);
+  bytes.set(headerBytes, 0);
+  const dv = new DataView(buf, headerBytes.length);
+
+  let o = 0;
   for (const p of points) {
-    const fdc0 = (p.r / 255 - 0.5) / SH_C0;
-    const fdc1 = (p.g / 255 - 0.5) / SH_C0;
-    const fdc2 = (p.b / 255 - 0.5) / SH_C0;
-    lines.push(
-      `${p.x.toFixed(5)} ${p.y.toFixed(5)} ${p.z.toFixed(5)} ` +
-        `${fdc0.toFixed(4)} ${fdc1.toFixed(4)} ${fdc2.toFixed(4)} ` +
-        `${opacityLogit.toFixed(4)} ` +
-        `${logScale.toFixed(4)} ${logScale.toFixed(4)} ${logScale.toFixed(4)} ` +
-        `1 0 0 0\n`,
-    );
+    const vals = [
+      p.x, p.y, p.z,
+      (p.r / 255 - 0.5) / SH_C0, (p.g / 255 - 0.5) / SH_C0, (p.b / 255 - 0.5) / SH_C0,
+      opacityLogit,
+      logScale, logScale, logScale,
+      1, 0, 0, 0,
+    ];
+    for (const v of vals) {
+      dv.setFloat32(o, v, true); // little-endian
+      o += 4;
+    }
   }
-  return new Blob(lines, { type: "application/octet-stream" });
+  return new Blob([buf], { type: "application/octet-stream" });
 }

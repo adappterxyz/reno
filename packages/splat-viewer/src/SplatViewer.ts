@@ -121,10 +121,14 @@ export class SplatViewer {
     return this.mode;
   }
 
-  /** Load a splat (.ply / compressed .ply / .sog) from a URL and frame it. */
-  async loadSplat(url: string) {
+  /**
+   * Load a splat from a URL and frame it. `filename` tells PlayCanvas which
+   * parser to use (it reads the extension, not the content-type) — required
+   * because our signed URLs have no extension (`.../file?t=...`).
+   */
+  async loadSplat(url: string, filename = "model.ply") {
     return new Promise<void>((resolve, reject) => {
-      const asset = new pc.Asset("splat", "gsplat", { url });
+      const asset = new pc.Asset("splat", "gsplat", { url, filename });
       asset.on("progress", (received: number, total: number) => {
         if (total > 0) this.events.onLoadProgress?.(received / total);
       });
