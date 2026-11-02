@@ -9,9 +9,11 @@ export interface CaptureSession {
   captureUrl: string;
 }
 
+export type CaptureKind = "video" | "photos" | "webxr";
+
 export interface CaptureState {
   status: "waiting" | "connected" | "uploading" | "ready" | "failed";
-  kind: "video" | "photos" | null;
+  kind: CaptureKind | null;
   mediaKeys: string[];
   progress: number;
   message: string;
@@ -83,7 +85,7 @@ export async function uploadCaptureMedia(
 export function completeCapture(
   s: { sessionId: string; token: string; exp: number },
   keys: string[],
-  kind: "video" | "photos",
+  kind: CaptureKind,
 ): Promise<unknown> {
   return fetchJson(`${routes.captureComplete(s.sessionId)}?${tokenQS(s)}`, {
     method: "POST",

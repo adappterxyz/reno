@@ -123,7 +123,7 @@ capturePublic.post("/capture/:sessionId/complete", async (c) => {
   if (!auth) return err(c, "Invalid session token", 403);
   const body = (await c.req.json().catch(() => ({}))) as {
     keys?: string[];
-    kind?: "video" | "photos";
+    kind?: "video" | "photos" | "webxr";
   };
   const keys = (body.keys ?? []).filter((k) => k.startsWith(`captures/${auth.sid}/`));
   const kind = body.kind ?? "video";

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import QRCode from "qrcode";
-import { extractFramesFromVideo, datasetFromPhotos, type NerfDataset } from "@reno/splat-trainer";
+import type { NerfDataset } from "@reno/splat-trainer";
 import {
   createCaptureSession,
   openCaptureSocket,
@@ -9,6 +9,7 @@ import {
   type CaptureSession,
   type CaptureState,
 } from "../api/capture.js";
+import { datasetFromBlobs } from "../lib/buildModel.js";
 
 /**
  * Desktop side of the phone→desktop handoff. Creates a capture session, shows a
@@ -50,7 +51,7 @@ export function CaptureHandoff({
               const blobs = await Promise.all(
                 st.mediaKeys.map((k) => downloadCaptureMedia(session, k)),
               );
-              const ds = await buildDataset(blobs, st.kind ?? "video");
+              const ds = await datasetFromBlobs(blobs, st.kind ?? "video");
               onDataset(ds);
             } catch (e) {
               setError((e as Error).message);
@@ -87,23 +88,4 @@ export function CaptureHandoff({
       </Typography>
     </Stack>
   );
-}
-
-async function buildDataset(blobs: Blob[], kind: "video" | "photos"): Promise<NerfDataset> {
-  if (kind === "video") {
-    const file = new File([blobs[0]!], "capture.mp4", { type: blobs[0]!.type || "video/mp4" });
-    const { images, width, height } = await extractFramesFromVideo(file);
-    return {
-      fl_x: width,
-      fl_y: width,
-      cx: width / 2,
-      cy: height / 2,
-      w: width,
-      h: height,
-      frames: images,
-      poseSource: "sfm",
-    };
-  }
-  const files = blobs.map((b, i) => new File([b], `photo_${i}.jpg`, { type: b.type || "image/jpeg" }));
-  return datasetFromPhotos(files);
 }

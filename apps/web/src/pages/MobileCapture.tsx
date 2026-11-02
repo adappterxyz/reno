@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
@@ -6,13 +6,16 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   LinearProgress,
   Stack,
   Typography,
 } from "@mui/material";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import { WebXRCapture, datasetToJson } from "@reno/splat-trainer";
 import {
   uploadCaptureMedia,
   completeCapture,
@@ -39,8 +42,54 @@ export function MobileCapture() {
   const [progress, setProgress] = useState(0);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [xrSupported, setXrSupported] = useState(false);
+  const [xrActive, setXrActive] = useState(false);
+  const [xrFrames, setXrFrames] = useState(0);
+  const xrRef = useRef<WebXRCapture | null>(null);
 
   const valid = sessionId && session.token && session.exp;
+
+  useEffect(() => {
+    new WebXRCapture().isSupported().then(setXrSupported);
+  }, []);
+
+  // AR capture: records frames WITH camera poses -> no SfM guessing on the desktop.
+  const startXR = async () => {
+    setError(null);
+    try {
+      const cap = new WebXRCapture();
+      xrRef.current = cap;
+      await cap.start(document.body);
+      setXrActive(true);
+      const poll = setInterval(() => setXrFrames(cap.frameCount()), 500);
+      (cap as unknown as { _poll?: number })._poll = poll as unknown as number;
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const finishXR = async () => {
+    const cap = xrRef.current;
+    if (!cap) return;
+    setBusy(true);
+    setXrActive(false);
+    try {
+      clearInterval((cap as unknown as { _poll?: number })._poll);
+      const dataset = await cap.stop();
+      if (dataset.frames.length < 8) throw new Error("Too few frames captured — walk around more.");
+      await reportCaptureProgress(session, { status: "uploading", message: "Uploading AR capture…" });
+      const json = await datasetToJson(dataset);
+      const blob = new Blob([json], { type: "application/json" });
+      const key = await uploadCaptureMedia(session, blob, "json", setProgress);
+      await completeCapture(session, [key], "webxr");
+      setDone(true);
+    } catch (e) {
+      setError((e as Error).message);
+      await reportCaptureProgress(session, { status: "failed", message: (e as Error).message }).catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handle = async (files: FileList | null, kind: "video" | "photos") => {
     if (!files || !files.length) return;
@@ -86,12 +135,37 @@ export function MobileCapture() {
           ) : (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Slowly pan around the room, keeping walls and objects in view. More overlap = better 3D.
+                Walk slowly around the room (don't just turn in place), keeping walls and objects
+                in view from different positions. Overlap + movement = good 3D.
               </Typography>
               {error && <Alert severity="error">{error}</Alert>}
 
+              {xrActive ? (
+                <Stack spacing={1} alignItems="center">
+                  <Chip color="secondary" label={`AR capturing… ${xrFrames} frames`} />
+                  <Typography variant="body2" color="text.secondary" align="center">
+                    Walk around the room. Tap Finish when you've covered it.
+                  </Typography>
+                  <Button variant="contained" color="secondary" onClick={finishXR} disabled={busy} fullWidth>
+                    Finish AR capture
+                  </Button>
+                </Stack>
+              ) : (
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={<ViewInArIcon />}
+                  onClick={startXR}
+                  disabled={busy || !xrSupported}
+                >
+                  {xrSupported ? "Scan in AR (best — captures depth)" : "AR not supported on this phone"}
+                </Button>
+              )}
+
+              {!xrActive && (
+              <>
               <Button
-                variant="contained"
+                variant="outlined"
                 size="large"
                 startIcon={<VideocamIcon />}
                 component="label"
@@ -124,6 +198,8 @@ export function MobileCapture() {
                   onChange={(e) => handle(e.target.files, "photos")}
                 />
               </Button>
+              </>
+              )}
 
               {busy && (
                 <Box>

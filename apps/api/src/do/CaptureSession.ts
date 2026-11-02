@@ -9,7 +9,7 @@ type CaptureStatus = "waiting" | "connected" | "uploading" | "ready" | "failed";
 
 interface SessionState {
   status: CaptureStatus;
-  kind: "video" | "photos" | null;
+  kind: "video" | "photos" | "webxr" | null;
   mediaKeys: string[];
   progress: number; // 0..1 upload progress reported by the phone
   message: string;

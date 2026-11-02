@@ -3,6 +3,7 @@ import {
   pointsToSplatPly,
   extractFramesFromVideo,
   datasetFromPhotos,
+  datasetFromJson,
   type NerfDataset,
   type TrainingProgress,
 } from "@reno/splat-trainer";
@@ -16,8 +17,15 @@ export interface BuildProgress {
   message?: string;
 }
 
-/** Build a dataset from already-downloaded media blobs (video or photos). */
-export async function datasetFromBlobs(blobs: Blob[], kind: "video" | "photos"): Promise<NerfDataset> {
+/** Build a dataset from already-downloaded media blobs (video, photos, or WebXR). */
+export async function datasetFromBlobs(
+  blobs: Blob[],
+  kind: "video" | "photos" | "webxr",
+): Promise<NerfDataset> {
+  if (kind === "webxr") {
+    // Phone uploaded a serialized posed dataset (frames + camera poses).
+    return datasetFromJson(await blobs[0]!.text());
+  }
   if (kind === "video") {
     const file = new File([blobs[0]!], "capture.mp4", { type: blobs[0]!.type || "video/mp4" });
     const { images, width, height } = await extractFramesFromVideo(file);
@@ -30,14 +38,14 @@ export async function datasetFromBlobs(blobs: Blob[], kind: "video" | "photos"):
 /** Download the model's persisted capture media (signed URLs) as blobs. */
 export async function downloadModelMedia(
   modelId: string,
-): Promise<{ blobs: Blob[]; kind: "video" | "photos" }> {
+): Promise<{ blobs: Blob[]; kind: "video" | "photos" | "webxr" }> {
   const base = config.apiBase || window.location.origin;
   const res = await fetch(base + routes.mediaUrls(modelId), {
     headers: { Authorization: `Bearer ${localStorage.getItem("reno.token") ?? ""}` },
   });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || "Could not list capture media");
-  const { urls, kind } = json.data as { urls: string[]; kind: "video" | "photos" | null };
+  const { urls, kind } = json.data as { urls: string[]; kind: "video" | "photos" | "webxr" | null };
   if (!urls.length) throw new Error("No stored capture media to build from");
   const blobs = await Promise.all(
     urls.map(async (u) => {

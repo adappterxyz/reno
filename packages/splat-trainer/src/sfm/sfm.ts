@@ -20,6 +20,16 @@ export interface SfmOptions {
   maxFrames?: number; // subsample to keep in-browser runtime tractable
 }
 
+/** True if a 4x4 is (close to) the identity — i.e. no real pose was supplied. */
+function isIdentity(m: number[][]): boolean {
+  for (let i = 0; i < 4; i++)
+    for (let j = 0; j < 4; j++) {
+      const expect = i === j ? 1 : 0;
+      if (Math.abs((m[i]?.[j] ?? expect) - expect) > 1e-6) return false;
+    }
+  return true;
+}
+
 /** Evenly pick up to `max` indices from [0, n). */
 function evenlySample(n: number, max: number): number[] {
   if (n <= max) return Array.from({ length: n }, (_, i) => i);
@@ -70,13 +80,19 @@ export async function runSfmOnDataset(
   const cv: any = await loadOpenCV();
   const nFeatures = opts.nFeatures ?? 4000;
   const minMatches = opts.minMatches ?? 20;
-  const maxReprojErr = opts.maxReprojErr ?? 4.0;
   onProgress({ phase: "sfm", progress: 0.02, message: "OpenCV loaded" });
 
   if (dataset.frames.length < 2) throw new Error("Need at least 2 frames for SfM");
   // Subsample to a tractable number of keyframes for in-browser runtime.
   const sel = evenlySample(dataset.frames.length, opts.maxFrames ?? 48);
   const n = sel.length;
+
+  // If the capture already carries camera poses (WebXR), use them directly and
+  // skip fragile monocular pose estimation — just triangulate from known poses.
+  const usePoses =
+    (dataset.poseSource === "webxr" || dataset.poseSource === "external") &&
+    !isIdentity(dataset.frames[sel[Math.min(1, n - 1)]!]!.transform_matrix);
+  const maxReprojErr = opts.maxReprojErr ?? (usePoses ? 8.0 : 4.0);
 
   const f = dataset.fl_x || 1.2 * Math.max(dataset.w, dataset.h);
   const cx = dataset.cx || dataset.w / 2;
@@ -129,63 +145,67 @@ export async function runSfmOnDataset(
     onProgress({ phase: "sfm", progress: 0.3 + 0.2 * (i / (n - 1)), message: `Matching ${i}/${n - 1}` });
   }
 
-  // --- 3. Pose chain with scale propagation + incremental triangulation ---
-  const M: Mat4[] = [identity4()];
-  let prevScale = 1;
-  for (let i = 1; i < n; i++) {
-    const good = pairMatches[i - 1]!;
-    let R: number[][] | null = null;
-    let tUnit: Vec3 | null = null;
-    let inlierMask: Uint8Array | null = null;
-    if (good.length >= minMatches) {
-      const est = essential(frames[i - 1]!, frames[i]!, good, K);
-      if (est) {
-        R = est.R;
-        tUnit = est.t;
-        inlierMask = est.mask;
+  // --- 3. Camera poses: use captured poses (WebXR) or estimate via SfM ---
+  const M: Mat4[] = [];
+  if (usePoses) {
+    // transform_matrix is camera-to-world (OpenGL). Convert to OpenCV world->cam.
+    for (let i = 0; i < n; i++) {
+      M.push(invertRigid4(cvToOpenGL(dataset.frames[sel[i]!]!.transform_matrix)));
+    }
+    onProgress({ phase: "sfm", progress: 0.85, message: "Using captured camera poses" });
+  } else {
+    // Monocular SfM: chain pairwise essential poses with scale propagation.
+    M.push(identity4());
+    let prevScale = 1;
+    for (let i = 1; i < n; i++) {
+      const good = pairMatches[i - 1]!;
+      let R: number[][] | null = null;
+      let tUnit: Vec3 | null = null;
+      let inlierMask: Uint8Array | null = null;
+      if (good.length >= minMatches) {
+        const est = essential(frames[i - 1]!, frames[i]!, good, K);
+        if (est) {
+          R = est.R;
+          tUnit = est.t;
+          inlierMask = est.mask;
+        }
       }
+      if (!R || !tUnit) {
+        M.push(M[i - 1]!.map((r) => r.slice())); // carry forward
+        continue;
+      }
+      const Mprev = M[i - 1]!;
+      const sCandidates: number[] = [];
+      const localCamB = rigid4(R, tUnit);
+      for (let g = 0; g < good.length; g++) {
+        if (inlierMask && inlierMask[g] === 0) continue;
+        const tid = frames[i - 1]!.trackOf[good[g]!.a]!;
+        const X = tid >= 0 ? tracks[tid]!.point : undefined;
+        if (!X) continue;
+        const depthPrev = applyRigid(Mprev, X)[2];
+        const pa = frames[i - 1]!.kps[good[g]!.a]!;
+        const pb = frames[i]!.kps[good[g]!.b]!;
+        const Plocal = triangulatePair(identity4(), localCamB, pa, pb, K);
+        if (!Plocal) continue;
+        const depthLocal = Plocal[2];
+        if (depthLocal > 1e-4 && depthPrev > 1e-4) sCandidates.push(depthPrev / depthLocal);
+      }
+      const s = sCandidates.length >= 3 ? median(sCandidates) : prevScale;
+      prevScale = s;
+      const rel = rigid4(R, [tUnit[0] * s, tUnit[1] * s, tUnit[2] * s]);
+      M.push(mul4(rel, Mprev));
+      const Mi = M[i]!;
+      for (let g = 0; g < good.length; g++) {
+        if (inlierMask && inlierMask[g] === 0) continue;
+        const tid = frames[i]!.trackOf[good[g]!.b]!;
+        if (tid < 0 || tracks[tid]!.point) continue;
+        const pa = frames[i - 1]!.kps[good[g]!.a]!;
+        const pb = frames[i]!.kps[good[g]!.b]!;
+        const X = triangulateGlobal(Mprev, Mi, pa, pb, K);
+        if (X) tracks[tid]!.point = X;
+      }
+      onProgress({ phase: "sfm", progress: 0.5 + 0.35 * (i / (n - 1)), message: `Poses ${i}/${n - 1}` });
     }
-    if (!R || !tUnit) {
-      M.push(M[i - 1]!.map((r) => r.slice())); // carry forward
-      continue;
-    }
-
-    // Scale: compare known global points' depth in cam (i-1) to a unit-scale local triangulation.
-    const Mprev = M[i - 1]!;
-    const sCandidates: number[] = [];
-    const localCamB = rigid4(R, tUnit);
-    for (let g = 0; g < good.length; g++) {
-      if (inlierMask && inlierMask[g] === 0) continue;
-      const tid = frames[i - 1]!.trackOf[good[g]!.a]!;
-      const X = tid >= 0 ? tracks[tid]!.point : undefined;
-      if (!X) continue;
-      const depthPrev = applyRigid(Mprev, X)[2];
-      // local triangulation in cam(i-1) frame (origin) at unit scale
-      const pa = frames[i - 1]!.kps[good[g]!.a]!;
-      const pb = frames[i]!.kps[good[g]!.b]!;
-      const Plocal = triangulatePair(identity4(), localCamB, pa, pb, K);
-      if (!Plocal) continue;
-      const depthLocal = Plocal[2];
-      if (depthLocal > 1e-4 && depthPrev > 1e-4) sCandidates.push(depthPrev / depthLocal);
-    }
-    const s = sCandidates.length >= 3 ? median(sCandidates) : prevScale;
-    prevScale = s;
-
-    const rel = rigid4(R, [tUnit[0] * s, tUnit[1] * s, tUnit[2] * s]);
-    M.push(mul4(rel, Mprev));
-
-    // Incrementally triangulate tracks newly completing at this pair (no global point yet).
-    const Mi = M[i]!;
-    for (let g = 0; g < good.length; g++) {
-      if (inlierMask && inlierMask[g] === 0) continue;
-      const tid = frames[i]!.trackOf[good[g]!.b]!;
-      if (tid < 0 || tracks[tid]!.point) continue;
-      const pa = frames[i - 1]!.kps[good[g]!.a]!;
-      const pb = frames[i]!.kps[good[g]!.b]!;
-      const X = triangulateGlobal(Mprev, Mi, pa, pb, K);
-      if (X) tracks[tid]!.point = X;
-    }
-    onProgress({ phase: "sfm", progress: 0.5 + 0.35 * (i / (n - 1)), message: `Poses ${i}/${n - 1}` });
   }
 
   // --- 4. Final per-track: re-triangulate from widest baseline, reproject-filter, color ---
@@ -237,9 +257,12 @@ export async function runSfmOnDataset(
   orb.delete();
   matcher.delete();
 
-  // --- 6. Fill dataset poses (camera-to-world, OpenGL) for the keyframes used ---
-  for (let i = 0; i < n; i++)
-    dataset.frames[sel[i]!]!.transform_matrix = cvToOpenGL(invertRigid4(M[i]!));
+  // --- 6. Fill dataset poses (camera-to-world, OpenGL) for the keyframes used,
+  // unless they were already supplied by the capture (WebXR). ---
+  if (!usePoses) {
+    for (let i = 0; i < n; i++)
+      dataset.frames[sel[i]!]!.transform_matrix = cvToOpenGL(invertRigid4(M[i]!));
+  }
 
   if (points.length === 0) throw new Error("SfM produced no points (need more overlap/parallax and texture)");
   onProgress({ phase: "sfm", progress: 1, message: `${points.length} points` });
