@@ -27,13 +27,20 @@ app.post("/auth/otp/request", async (c) => {
   const code = generateCode();
   await storeCode(c.env, norm, code);
   const dev = c.env.OTP_DEV_MODE === "true";
+
+  let sent = false;
+  let sendError: string | null = null;
   try {
-    const sent = await sendOtpEmail(c.env, norm, code);
-    // In dev, surface the code so the flow is testable without email infra.
-    return ok(c, { sent, ...(dev ? { devCode: code } : {}) });
-  } catch {
-    return err(c, "Could not send code, try again", 502);
+    sent = await sendOtpEmail(c.env, norm, code);
+  } catch (e) {
+    sendError = (e as Error).message;
+    console.error("[otp] send failed:", sendError);
   }
+
+  // Production: a failed send is a hard error. Dev: still return the code so the
+  // flow is testable while email delivery is being set up.
+  if (!sent && !dev) return err(c, "Could not send code, try again", 502);
+  return ok(c, { sent, ...(dev ? { devCode: code, sendError } : {}) });
 });
 
 app.post("/auth/otp/verify", async (c) => {

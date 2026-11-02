@@ -1,38 +1,31 @@
 import type { Env } from "../env.js";
 
 /**
- * Send the OTP email. Uses Resend (https://resend.com) via its HTTP API when
- * RESEND_API_KEY is set — no SMTP, works from Workers. When the key is absent
- * (local/dev), we log the code instead so the flow is testable without email infra.
+ * Send the OTP email via Cloudflare Email Service (env.EMAIL.send). Fully
+ * Cloudflare-native — no third-party provider.
  *
- * Returns true if an email was actually dispatched.
+ * Prerequisites (one-time, in the Cloudflare dashboard):
+ *   - Enable Email Sending on the account.
+ *   - Verify the sender domain (10kbto.homes) — adds DKIM/SPF DNS records.
+ *   - Sending to arbitrary recipients requires the Workers Paid plan; otherwise
+ *     only verified destination addresses receive mail.
+ *
+ * Returns true if an email was dispatched. If the EMAIL binding is absent
+ * (e.g. local `wrangler dev` without the feature), logs the code instead.
  */
 export async function sendOtpEmail(env: Env, to: string, code: string): Promise<boolean> {
-  if (!env.RESEND_API_KEY) {
-    console.log(`[otp] (dev, no RESEND_API_KEY) code for ${to}: ${code}`);
+  if (!env.EMAIL) {
+    console.log(`[otp] (no EMAIL binding) code for ${to}: ${code}`);
     return false;
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.OTP_FROM_EMAIL,
-      to: [to],
-      subject: `Your ${env.APP_NAME} sign-in code: ${code}`,
-      text: `Your ${env.APP_NAME} sign-in code is ${code}. It expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
-      html: otpHtml(env.APP_NAME, code),
-    }),
+  await env.EMAIL.send({
+    to,
+    from: env.OTP_FROM_EMAIL,
+    subject: `Your ${env.APP_NAME} sign-in code: ${code}`,
+    text: `Your ${env.APP_NAME} sign-in code is ${code}. It expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+    html: otpHtml(env.APP_NAME, code),
   });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error(`[otp] Resend failed ${res.status}: ${body}`);
-    throw new Error("Failed to send email");
-  }
   return true;
 }
 

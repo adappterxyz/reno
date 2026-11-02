@@ -39,7 +39,12 @@ class_name = "SplatJob"
 tag = "v1"
 new_sqlite_classes = ["SplatJob"]
 
-# --- KV (cache: JWKS, sessions) ---
+# --- Cloudflare Email Service: send OTP emails from the Worker (env.EMAIL.send) ---
+# Requires enabling Email Sending + verifying the sender domain in the dashboard.
+[[send_email]]
+name = "EMAIL"
+
+# --- KV (cache: OTP codes, sessions) ---
 [[kv_namespaces]]
 binding = "CACHE"
 id = "8fb2fc0d334b4719a03db12f15efac1f"
