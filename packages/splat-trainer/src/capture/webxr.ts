@@ -80,6 +80,15 @@ export class WebXRCapture {
     if (!this.rafActive || !this.session || !this.refSpace) return;
     this.session.requestAnimationFrame(this.onXRFrame);
 
+    // Clear the XR base layer transparent so the device shows the camera
+    // passthrough (the live preview of what the user is pointing at).
+    const glLayer = this.session.renderState.baseLayer;
+    if (glLayer && this.gl) {
+      this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, glLayer.framebuffer);
+      this.gl.clearColor(0, 0, 0, 0);
+      this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+    }
+
     const pose = frame.getViewerPose(this.refSpace);
     if (!pose) return;
 

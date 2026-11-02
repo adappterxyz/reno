@@ -46,6 +46,8 @@ export function MobileCapture() {
   const [xrActive, setXrActive] = useState(false);
   const [xrFrames, setXrFrames] = useState(0);
   const xrRef = useRef<WebXRCapture | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const pollRef = useRef<number | null>(null);
 
   const valid = sessionId && session.token && session.exp;
 
@@ -53,17 +55,47 @@ export function MobileCapture() {
     new WebXRCapture().isSupported().then(setXrSupported);
   }, []);
 
+  const removeOverlay = () => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+    pollRef.current = null;
+    overlayRef.current?.remove();
+    overlayRef.current = null;
+  };
+
   // AR capture: records frames WITH camera poses -> no SfM guessing on the desktop.
+  // Uses a TRANSPARENT dom-overlay so the device shows the live camera passthrough
+  // (what you're pointing at) with just a Finish button on top.
   const startXR = async () => {
     setError(null);
     try {
+      const overlay = document.createElement("div");
+      overlay.style.cssText =
+        "position:fixed;inset:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:12px;padding:24px;background:transparent;pointer-events:none;z-index:9999;font-family:Inter,system-ui,sans-serif";
+      const info = document.createElement("div");
+      info.style.cssText =
+        "color:#fff;background:rgba(0,0,0,0.55);padding:8px 16px;border-radius:20px;font-size:14px;text-align:center";
+      info.textContent = "Walk slowly around the room…";
+      const btn = document.createElement("button");
+      btn.textContent = "Finish AR capture";
+      btn.style.cssText =
+        "pointer-events:auto;padding:14px 28px;font-size:16px;border:none;border-radius:28px;background:#17b890;color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+      btn.onclick = () => finishXR();
+      overlay.appendChild(info);
+      overlay.appendChild(btn);
+      document.body.appendChild(overlay);
+      overlayRef.current = overlay;
+
       const cap = new WebXRCapture();
       xrRef.current = cap;
-      await cap.start(document.body);
+      await cap.start(overlay);
       setXrActive(true);
-      const poll = setInterval(() => setXrFrames(cap.frameCount()), 500);
-      (cap as unknown as { _poll?: number })._poll = poll as unknown as number;
+      pollRef.current = window.setInterval(() => {
+        const n = cap.frameCount();
+        setXrFrames(n);
+        info.textContent = `Captured ${n} frames — keep walking around the room`;
+      }, 400);
     } catch (e) {
+      removeOverlay();
       setError((e as Error).message);
     }
   };
@@ -74,7 +106,7 @@ export function MobileCapture() {
     setBusy(true);
     setXrActive(false);
     try {
-      clearInterval((cap as unknown as { _poll?: number })._poll);
+      removeOverlay();
       const dataset = await cap.stop();
       if (dataset.frames.length < 8) throw new Error("Too few frames captured — walk around more.");
       await reportCaptureProgress(session, { status: "uploading", message: "Uploading AR capture…" });
