@@ -6,10 +6,21 @@ import { Login } from "./pages/Login.js";
 import { ProjectsList } from "./pages/ProjectsList.js";
 import { ProjectDetail } from "./pages/ProjectDetail.js";
 import { ModelWorkspace } from "./pages/ModelWorkspace.js";
+import { MobileCapture } from "./pages/MobileCapture.js";
 
 export function App() {
   const { user, loading } = useAuth();
 
+  return (
+    <Routes>
+      {/* Public: phone capture page (opened via desktop QR; no login). */}
+      <Route path="/capture/:sessionId" element={<MobileCapture />} />
+      <Route path="*" element={<Gated user={user} loading={loading} />} />
+    </Routes>
+  );
+}
+
+function Gated({ user, loading }: { user: unknown; loading: boolean }) {
   if (loading) {
     return (
       <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
@@ -17,7 +28,6 @@ export function App() {
       </Box>
     );
   }
-
   if (!user) return <Login />;
 
   return (

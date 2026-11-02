@@ -28,6 +28,16 @@ export const routes = {
   uploadPart: (id: string) => `${API_BASE_PATH}/splat-models/${id}/upload/part`,
   uploadComplete: (id: string) => `${API_BASE_PATH}/splat-models/${id}/upload/complete`,
   calibrate: (id: string) => `${API_BASE_PATH}/splat-models/${id}/calibrate`,
+  // Phone -> desktop capture handoff
+  captureSession: (modelId: string) => `${API_BASE_PATH}/splat-models/${modelId}/capture-session`,
+  captureInfo: (sid: string) => `${API_BASE_PATH}/capture/${sid}`,
+  captureWs: (sid: string) => `${API_BASE_PATH}/capture/${sid}/ws`,
+  captureProgress: (sid: string) => `${API_BASE_PATH}/capture/${sid}/progress`,
+  captureUploadCreate: (sid: string) => `${API_BASE_PATH}/capture/${sid}/upload/create`,
+  captureUploadPart: (sid: string) => `${API_BASE_PATH}/capture/${sid}/upload/part`,
+  captureUploadComplete: (sid: string) => `${API_BASE_PATH}/capture/${sid}/upload/complete`,
+  captureComplete: (sid: string) => `${API_BASE_PATH}/capture/${sid}/complete`,
+  captureFile: (sid: string) => `${API_BASE_PATH}/capture/${sid}/file`,
   tickets: (splatModelId: string) => `${API_BASE_PATH}/splat-models/${splatModelId}/tickets`,
   ticket: (id: string) => `${API_BASE_PATH}/tickets/${id}`,
   measurements: (splatModelId: string) =>

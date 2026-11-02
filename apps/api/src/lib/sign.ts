@@ -18,27 +18,39 @@ async function hmac(secret: string, data: string): Promise<string> {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function signFileToken(
+/** Generic short-lived signed token over an arbitrary subject string. */
+export async function signToken(
   secret: string,
-  modelId: string,
+  subject: string,
   ttlSeconds = 3600,
 ): Promise<{ t: string; e: number }> {
   const e = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const t = await hmac(secret, `${modelId}.${e}`);
+  const t = await hmac(secret, `${subject}.${e}`);
   return { t, e };
 }
 
-export async function verifyFileToken(
+export async function verifyToken(
   secret: string,
-  modelId: string,
+  subject: string,
   t: string,
   e: number,
 ): Promise<boolean> {
   if (!t || !e || e < Math.floor(Date.now() / 1000)) return false;
-  const expected = await hmac(secret, `${modelId}.${e}`);
-  // constant-time-ish compare
+  const expected = await hmac(secret, `${subject}.${e}`);
   if (expected.length !== t.length) return false;
-  let diff = 0;
+  let diff = 0; // constant-time-ish compare
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ t.charCodeAt(i);
   return diff === 0;
 }
+
+// File-URL tokens (subject = model id).
+export const signFileToken = (secret: string, modelId: string, ttl = 3600) =>
+  signToken(secret, `file:${modelId}`, ttl);
+export const verifyFileToken = (secret: string, modelId: string, t: string, e: number) =>
+  verifyToken(secret, `file:${modelId}`, t, e);
+
+// Capture-session tokens (subject = session id). Longer TTL: capture can take a while.
+export const signCaptureToken = (secret: string, sessionId: string, ttl = 7200) =>
+  signToken(secret, `cap:${sessionId}`, ttl);
+export const verifyCaptureToken = (secret: string, sessionId: string, t: string, e: number) =>
+  verifyToken(secret, `cap:${sessionId}`, t, e);

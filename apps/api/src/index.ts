@@ -8,6 +8,7 @@ import projects from "./routes/projects.js";
 import splatModels from "./routes/splatModels.js";
 import annotations from "./routes/annotations.js";
 import files from "./routes/files.js";
+import { captureAuthed, capturePublic } from "./routes/capture.js";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -31,12 +32,16 @@ app.route("/api", files);
 // Public auth routes (email OTP request/verify).
 app.route("/api", auth);
 
-// Everything else requires a valid Auth0 token.
+// Public, token-authed capture-session routes (phone upload + desktop signal/download).
+app.route("/api", capturePublic);
+
+// Everything else requires a valid session token.
 const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 api.use("*", requireAuth);
 api.route("/", projects);
 api.route("/", splatModels);
 api.route("/", annotations);
+api.route("/", captureAuthed);
 
 app.route("/api", api);
 
@@ -47,3 +52,4 @@ app.onError((e, c) => {
 
 export default app;
 export { SplatJob } from "./do/SplatJob.js";
+export { CaptureSession } from "./do/CaptureSession.js";

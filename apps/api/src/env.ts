@@ -4,6 +4,7 @@ export interface Env {
   SPLATS: R2Bucket;
   CACHE: KVNamespace;
   SPLAT_JOB: DurableObjectNamespace;
+  CAPTURE_SESSION: DurableObjectNamespace;
   CORS_ORIGIN: string;
   /** HMAC secret for signed splat-file URLs AND session JWT signing. */
   SIGNING_SECRET: string;

@@ -23,6 +23,8 @@ import {
   datasetFromPhotos,
   BrushTrainer,
   isWebGPUAvailable,
+  runSfmOnDataset,
+  pointsToSplatPly,
   type NerfDataset,
   type TrainingProgress,
 } from "@reno/splat-trainer";
@@ -30,9 +32,10 @@ import { routes, type SplatModel } from "@reno/shared";
 import { api } from "../api/client.js";
 import { uploadSplatFile } from "../api/upload.js";
 import { config } from "../config.js";
+import { CaptureHandoff } from "./CaptureHandoff.js";
 
-type Method = "webxr" | "upload-video" | "upload-photos" | "upload-ply";
-const STEPS = ["Name & method", "Capture / input", "Train", "Upload"];
+type Method = "phone" | "webxr" | "upload-video" | "upload-photos" | "upload-ply";
+const STEPS = ["Name & method", "Capture / input", "Build", "Upload"];
 
 export function CreateModelWizard({
   spaceId,
@@ -45,7 +48,7 @@ export function CreateModelWizard({
 }) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const [method, setMethod] = useState<Method>("upload-ply");
+  const [method, setMethod] = useState<Method>("phone");
   const [webgpu, setWebgpu] = useState(false);
   const [xrSupported, setXrSupported] = useState(false);
 
@@ -141,20 +144,28 @@ export function CreateModelWizard({
 
   const train = async () => {
     if (!dataset) return;
-    if (dataset.poseSource === "sfm") {
-      setError(
-        "This input has no camera poses, so it needs a Structure-from-Motion step before training. " +
-          "SfM-in-browser is the Phase-1 spike; for now use WebXR capture or upload a pre-trained .ply.",
-      );
-      return;
-    }
-    if (!webgpu) {
-      setError("WebGPU is not available in this browser. Use Chrome 134+ to train, or upload a .ply.");
-      return;
-    }
     try {
       setBusy(true);
       setError(null);
+
+      // Pose-less input (video/photo upload) -> in-browser SfM -> point-cloud splat.
+      // This runs fully client-side (OpenCV.js) and needs no GPU/Brush worker.
+      if (dataset.poseSource === "sfm") {
+        const { points } = await runSfmOnDataset(dataset, (p: TrainingProgress) => {
+          setProgress(p.progress);
+          setProgressLabel(p.message ? `${p.phase}: ${p.message}` : `${p.phase}…`);
+        });
+        setProgressLabel(`Exporting splat (${points.length} points)…`);
+        setPlyBlob(pointsToSplatPly(points));
+        setBusy(false);
+        setStep(3);
+        return;
+      }
+
+      // Posed input (WebXR / external) -> Brush WebGPU training.
+      if (!webgpu) {
+        throw new Error("WebGPU is not available in this browser. Use Chrome 134+ to train, or upload a .ply.");
+      }
       const trainer = new BrushTrainer({ workerUrl: config.brushWorkerUrl });
       if (!(await trainer.isSupported())) {
         throw new Error("Brush trainer unavailable (set VITE_BRUSH_WORKER_URL to the Brush WASM worker).");
@@ -211,8 +222,9 @@ export function CreateModelWizard({
               onChange={(_, v) => v && setMethod(v)}
               fullWidth
             >
+              <ToggleButton value="phone">📱 Capture with phone (scan QR) — recommended</ToggleButton>
               <ToggleButton value="webxr" disabled={!xrSupported}>
-                AR capture (WebXR){xrSupported ? "" : " — not supported on this device"}
+                AR capture (WebXR){xrSupported ? "" : " — not on this device"}
               </ToggleButton>
               <ToggleButton value="upload-video">Upload a video</ToggleButton>
               <ToggleButton value="upload-photos">Upload photos</ToggleButton>
@@ -226,6 +238,15 @@ export function CreateModelWizard({
 
         {step === 1 && (
           <Stack spacing={2}>
+            {method === "phone" && modelRef.current && (
+              <CaptureHandoff
+                modelId={modelRef.current.id}
+                onDataset={(ds) => {
+                  setDataset(ds);
+                  setStep(2);
+                }}
+              />
+            )}
             {method === "webxr" && (
               <>
                 <Typography>Walk slowly around the room keeping surfaces in view.</Typography>
@@ -260,9 +281,20 @@ export function CreateModelWizard({
         {step === 2 && (
           <Stack spacing={2}>
             <Typography>
-              {dataset?.frames.length ?? 0} frames captured ({dataset?.poseSource} poses).
+              {dataset?.frames.length ?? 0} frames ·{" "}
+              {dataset?.poseSource === "sfm"
+                ? "no poses — will run in-browser SfM (OpenCV.js)"
+                : `${dataset?.poseSource} poses — will train with Brush`}
             </Typography>
-            <Button variant="contained" onClick={train} disabled={busy}>Train splat on-device</Button>
+            {dataset?.poseSource === "sfm" && (
+              <Typography variant="caption" color="text.secondary">
+                Spike quality: produces a sparse colored point-cloud splat (no densification yet).
+                Best with a slow, overlapping pan around the space.
+              </Typography>
+            )}
+            <Button variant="contained" onClick={train} disabled={busy}>
+              {dataset?.poseSource === "sfm" ? "Reconstruct 3D model" : "Train splat on-device"}
+            </Button>
             {busy && <LinearProgress variant="determinate" value={progress * 100} />}
             {progressLabel && <Typography variant="caption">{progressLabel}</Typography>}
           </Stack>

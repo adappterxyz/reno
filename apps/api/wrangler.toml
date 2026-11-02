@@ -35,9 +35,17 @@ bucket_name = "reno-splats"
 name = "SPLAT_JOB"
 class_name = "SplatJob"
 
+[[durable_objects.bindings]]
+name = "CAPTURE_SESSION"
+class_name = "CaptureSession"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SplatJob"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CaptureSession"]
 
 # --- Cloudflare Email Service: send OTP emails from the Worker (env.EMAIL.send) ---
 # Requires enabling Email Sending + verifying the sender domain in the dashboard.
