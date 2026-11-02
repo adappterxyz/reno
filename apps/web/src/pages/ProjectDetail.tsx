@@ -89,12 +89,10 @@ function SpaceCard({ space }: { space: ProjectSpace }) {
                 onClick={m.status === "ready" ? () => navigate(`/spaces/${space.id}/model/${m.id}`) : undefined}
                 clickable={m.status === "ready"}
               />
-              {/* Resume build from already-uploaded capture media. */}
-              {(m.status === "capturing" || m.status === "failed" || m.status === "draft") && (
-                <Button size="small" onClick={() => setResumeId(m.id)}>
-                  Build from capture
-                </Button>
-              )}
+              {/* Rebuild from already-uploaded capture media (any status). */}
+              <Button size="small" onClick={() => setResumeId(m.id)}>
+                {m.status === "ready" ? "Rebuild" : "Build from capture"}
+              </Button>
             </Stack>
           ))}
           {!models?.length && (
