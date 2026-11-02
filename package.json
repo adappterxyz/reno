@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "build:web": "pnpm --filter @reno/web build",
-    "deploy": "pnpm --filter @reno/web build && pnpm --filter @reno/api deploy"
+    "deploy": "pnpm --filter @reno/web build && pnpm --filter @reno/api run deploy"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
