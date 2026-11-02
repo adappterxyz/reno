@@ -10,6 +10,7 @@ import {
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
+import { GlobalErrorSnackbar } from "./GlobalErrorSnackbar.js";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -43,6 +44,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <Container maxWidth="lg" sx={{ py: 4 }}>
         {children}
       </Container>
+      <GlobalErrorSnackbar />
     </Box>
   );
 }

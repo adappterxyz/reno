@@ -19,48 +19,70 @@ async function authHeaders(extra: Record<string, string> = {}): Promise<Record<s
   return headers;
 }
 
+/** Surface an API failure to the console and the global error snackbar. */
+function reportError(message: string) {
+  console.error("[api]", message);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("reno:api-error", { detail: message }));
+  }
+}
+
 async function unwrap<T>(res: Response): Promise<T> {
-  const json = (await res.json()) as ApiResponse<T>;
-  if (!json.ok) throw new Error(json.error);
+  let json: ApiResponse<T> | null = null;
+  try {
+    json = (await res.json()) as ApiResponse<T>;
+  } catch {
+    json = null;
+  }
+  if (!res.ok || !json || json.ok === false) {
+    const msg =
+      (json && json.ok === false && json.error) || `Request failed (HTTP ${res.status})`;
+    reportError(msg);
+    throw new Error(msg);
+  }
   return json.data;
+}
+
+async function request<T>(path: string, init: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(config.apiBase + path, init);
+  } catch (e) {
+    const msg = `Network error: ${(e as Error).message} (${path})`;
+    reportError(msg);
+    throw new Error(msg);
+  }
+  return unwrap<T>(res);
 }
 
 export const api = {
   async get<T>(path: string): Promise<T> {
-    const res = await fetch(config.apiBase + path, { headers: await authHeaders() });
-    return unwrap<T>(res);
+    return request<T>(path, { headers: await authHeaders() });
   },
   async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(config.apiBase + path, {
+    return request<T>(path, {
       method: "POST",
       headers: await authHeaders({ "Content-Type": "application/json" }),
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return unwrap<T>(res);
   },
   async patch<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(config.apiBase + path, {
+    return request<T>(path, {
       method: "PATCH",
       headers: await authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
-    return unwrap<T>(res);
   },
   async del<T>(path: string): Promise<T> {
-    const res = await fetch(config.apiBase + path, {
-      method: "DELETE",
-      headers: await authHeaders(),
-    });
-    return unwrap<T>(res);
+    return request<T>(path, { method: "DELETE", headers: await authHeaders() });
   },
   /** Raw PUT of binary (used by the multipart upload part endpoint). */
   async putBinary<T>(path: string, data: ArrayBuffer | Blob): Promise<T> {
-    const res = await fetch(config.apiBase + path, {
+    return request<T>(path, {
       method: "PUT",
       headers: await authHeaders({ "Content-Type": "application/octet-stream" }),
       body: data,
     });
-    return unwrap<T>(res);
   },
   /** Absolute URL for a splat file (with the auth token appended is not possible for
    *  streamed <gsplat> loads; the viewer fetches via the Range-enabled endpoint and
