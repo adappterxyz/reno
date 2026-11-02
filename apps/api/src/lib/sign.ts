@@ -54,3 +54,9 @@ export const signCaptureToken = (secret: string, sessionId: string, ttl = 7200) 
   signToken(secret, `cap:${sessionId}`, ttl);
 export const verifyCaptureToken = (secret: string, sessionId: string, t: string, e: number) =>
   verifyToken(secret, `cap:${sessionId}`, t, e);
+
+// Media-download tokens (subject = exact R2 key) for resuming a build.
+export const signMediaToken = (secret: string, key: string, ttl = 3600) =>
+  signToken(secret, `media:${key}`, ttl);
+export const verifyMediaToken = (secret: string, key: string, t: string, e: number) =>
+  verifyToken(secret, `media:${key}`, t, e);

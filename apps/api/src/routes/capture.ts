@@ -126,12 +126,19 @@ capturePublic.post("/capture/:sessionId/complete", async (c) => {
     kind?: "video" | "photos";
   };
   const keys = (body.keys ?? []).filter((k) => k.startsWith(`captures/${auth.sid}/`));
+  const kind = body.kind ?? "video";
   await c.env.CACHE.put(
     kvKey(auth.sid),
     JSON.stringify({ ...auth.rec, status: "ready" }),
     { expirationTtl: 7200 },
   );
-  await notifyDO(c.env, auth.sid, { status: "ready", mediaKeys: keys, kind: body.kind ?? "video" });
+  // Persist media on the model so the build can be resumed without re-capturing.
+  await c.env.DB.prepare(
+    "UPDATE splat_models SET capture_media = ?, capture_kind = ?, status = 'capturing', date_updated = ? WHERE id = ?",
+  )
+    .bind(JSON.stringify(keys), kind, new Date().toISOString(), auth.rec.modelId)
+    .run();
+  await notifyDO(c.env, auth.sid, { status: "ready", mediaKeys: keys, kind });
   return ok(c, { ok: true });
 });
 

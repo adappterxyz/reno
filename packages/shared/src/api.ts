@@ -28,6 +28,7 @@ export const routes = {
   uploadPart: (id: string) => `${API_BASE_PATH}/splat-models/${id}/upload/part`,
   uploadComplete: (id: string) => `${API_BASE_PATH}/splat-models/${id}/upload/complete`,
   calibrate: (id: string) => `${API_BASE_PATH}/splat-models/${id}/calibrate`,
+  mediaUrls: (id: string) => `${API_BASE_PATH}/splat-models/${id}/media-urls`,
   // Phone -> desktop capture handoff
   captureSession: (modelId: string) => `${API_BASE_PATH}/splat-models/${modelId}/capture-session`,
   captureInfo: (sid: string) => `${API_BASE_PATH}/capture/${sid}`,

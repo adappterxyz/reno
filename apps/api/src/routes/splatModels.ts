@@ -8,7 +8,7 @@ import {
 } from "@reno/shared";
 import type { Env, Variables } from "../env.js";
 import { ok, err, newId, nowIso } from "../lib/http.js";
-import { signFileToken } from "../lib/sign.js";
+import { signFileToken, signMediaToken } from "../lib/sign.js";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -72,6 +72,24 @@ app.post("/project-spaces/:spaceId/splat-models", async (c) => {
 
   const row = await c.env.DB.prepare("SELECT * FROM splat_models WHERE id = ?").bind(id).first();
   return ok(c, rowToModel(row as Record<string, unknown>), 201);
+});
+
+// Resume: signed download URLs for the model's persisted capture media.
+app.get("/splat-models/:id/media-urls", async (c) => {
+  const row = await c.env.DB.prepare(
+    "SELECT capture_media, capture_kind FROM splat_models WHERE id = ?",
+  )
+    .bind(c.req.param("id"))
+    .first<{ capture_media: string | null; capture_kind: string | null }>();
+  if (!row?.capture_media) return ok(c, { kind: null, urls: [] as string[] });
+  const keys = JSON.parse(row.capture_media) as string[];
+  const urls = await Promise.all(
+    keys.map(async (key) => {
+      const { t, e } = await signMediaToken(c.env.SIGNING_SECRET, key);
+      return `/api/files/media?key=${encodeURIComponent(key)}&t=${t}&e=${e}`;
+    }),
+  );
+  return ok(c, { kind: row.capture_kind, urls });
 });
 
 // Get one.

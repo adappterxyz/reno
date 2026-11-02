@@ -4,7 +4,9 @@
  */
 let loadPromise: Promise<unknown> | null = null;
 
-const DEFAULT_URL = "https://docs.opencv.org/4.10.0/opencv.js";
+// Self-hosted same-origin (served from the app's /opencv/). Avoids CDN
+// bot-challenges/CORS and works under COEP. See apps/web/public/opencv/.
+const DEFAULT_URL = "/opencv/opencv.js";
 
 type CvGlobal = typeof globalThis & { cv?: unknown };
 

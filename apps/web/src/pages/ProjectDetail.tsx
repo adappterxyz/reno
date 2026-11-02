@@ -15,6 +15,7 @@ import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCreateSpace, useProject, useSplatModels, type ProjectSpace } from "../api/hooks.js";
 import { CreateModelWizard } from "../components/CreateModelWizard.js";
+import { ResumeBuild } from "../components/ResumeBuild.js";
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -67,6 +68,7 @@ function SpaceCard({ space }: { space: ProjectSpace }) {
   const { data: models, refetch } = useSplatModels(space.id);
   const navigate = useNavigate();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [resumeId, setResumeId] = useState<string | null>(null);
 
   return (
     <Card>
@@ -78,19 +80,22 @@ function SpaceCard({ space }: { space: ProjectSpace }) {
           </Button>
         </Stack>
 
-        <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+        <Stack spacing={1} mt={2}>
           {(models ?? []).map((m) => (
-            <Chip
-              key={m.id}
-              label={`${m.name} · ${m.status}`}
-              color={m.status === "ready" ? "success" : "default"}
-              onClick={
-                m.status === "ready"
-                  ? () => navigate(`/spaces/${space.id}/model/${m.id}`)
-                  : undefined
-              }
-              clickable={m.status === "ready"}
-            />
+            <Stack key={m.id} direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Chip
+                label={`${m.name} · ${m.status}`}
+                color={m.status === "ready" ? "success" : m.status === "capturing" ? "warning" : "default"}
+                onClick={m.status === "ready" ? () => navigate(`/spaces/${space.id}/model/${m.id}`) : undefined}
+                clickable={m.status === "ready"}
+              />
+              {/* Resume build from already-uploaded capture media. */}
+              {(m.status === "capturing" || m.status === "failed" || m.status === "draft") && (
+                <Button size="small" onClick={() => setResumeId(m.id)}>
+                  Build from capture
+                </Button>
+              )}
+            </Stack>
           ))}
           {!models?.length && (
             <Typography variant="body2" color="text.secondary">
@@ -108,6 +113,21 @@ function SpaceCard({ space }: { space: ProjectSpace }) {
             refetch();
           }}
           onReady={(modelId) => navigate(`/spaces/${space.id}/model/${modelId}`)}
+        />
+      )}
+
+      {resumeId && (
+        <ResumeBuild
+          modelId={resumeId}
+          onClose={() => {
+            setResumeId(null);
+            refetch();
+          }}
+          onDone={() => {
+            const id = resumeId;
+            setResumeId(null);
+            navigate(`/spaces/${space.id}/model/${id}`);
+          }}
         />
       )}
     </Card>
