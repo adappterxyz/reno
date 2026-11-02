@@ -3,6 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Custom domain (zone 10kbto.homes is on this Cloudflare account). Wrangler
+# provisions the hostname + cert and routes it to this Worker.
+routes = [
+  { pattern = "app.10kbto.homes", custom_domain = true },
+]
+workers_dev = true  # keep the *.workers.dev URL as a fallback/test endpoint
+
 # Serve the built SPA (apps/web/dist) as static assets from the same Worker.
 # The Worker runs first only for /api/*; everything else is served from assets,
 # with SPA fallback to index.html for client-side routes. One origin, no CORS.
@@ -41,7 +48,7 @@ id = "8fb2fc0d334b4719a03db12f15efac1f"
 # Public, non-secret config. Secrets go via `wrangler secret put`.
 CORS_ORIGIN = "http://localhost:5173"
 APP_NAME = "Reno"
-OTP_FROM_EMAIL = "Reno <login@adappter.xyz>"
+OTP_FROM_EMAIL = "Reno <login@10kbto.homes>"
 # Dev: returns/logs the OTP so sign-in works without email infra. Set to "false" in prod.
 OTP_DEV_MODE = "true"
 # Secrets (NOT vars): SIGNING_SECRET (sessions + file URLs), RESEND_API_KEY (email).
