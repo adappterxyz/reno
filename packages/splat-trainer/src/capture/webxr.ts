@@ -39,8 +39,10 @@ export class WebXRCapture {
   private intrinsics: { fl_x: number; fl_y: number; cx: number; cy: number; w: number; h: number } | null =
     null;
   private lastGrab = 0;
-  private grabIntervalMs = 350; // ~3 fps keyframes — enough parallax, manageable count
+  private grabIntervalMs = 400; // ~2.5 fps keyframes — enough parallax, manageable count
   private rafActive = false;
+  private maxDim = 960; // downscale images to this longest edge (upload size)
+  private maxFrames = 80; // cap keyframes so the payload stays small
 
   async isSupported(): Promise<boolean> {
     const xr = (navigator as Navigator & { xr?: XRSystem }).xr;
@@ -93,6 +95,7 @@ export class WebXRCapture {
     if (!pose) return;
 
     if (time - this.lastGrab < this.grabIntervalMs) return;
+    if (this.frames.length >= this.maxFrames) return; // enough keyframes captured
 
     for (const view of pose.views) {
       // Raw camera access: view.camera present only with "camera-access".
@@ -128,33 +131,48 @@ export class WebXRCapture {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(fb);
 
-    const cnv = document.createElement("canvas");
-    cnv.width = w;
-    cnv.height = h;
-    const ctx = cnv.getContext("2d")!;
-    const img = ctx.createImageData(w, h);
+    const full = document.createElement("canvas");
+    full.width = w;
+    full.height = h;
+    const fctx = full.getContext("2d")!;
+    const img = fctx.createImageData(w, h);
     // Flip vertically (GL origin bottom-left -> image top-left).
     for (let row = 0; row < h; row++) {
       const src = (h - 1 - row) * w * 4;
       const dst = row * w * 4;
       img.data.set(pixels.subarray(src, src + w * 4), dst);
     }
-    ctx.putImageData(img, 0, 0);
-    let blob: Blob | null = null;
-    // Synchronous-ish: use toDataURL fallback since toBlob is async; store a promise-free blob.
-    const dataUrl = cnv.toDataURL("image/png");
-    blob = dataURLtoBlob(dataUrl);
-    return blob;
+    fctx.putImageData(img, 0, 0);
+
+    // Downscale + JPEG to keep the uploaded payload small (phones upload this).
+    const s = this.scale(w, h);
+    const dw = Math.round(w * s);
+    const dh = Math.round(h * s);
+    const out = document.createElement("canvas");
+    out.width = dw;
+    out.height = dh;
+    out.getContext("2d")!.drawImage(full, 0, 0, dw, dh);
+    return dataURLtoBlob(out.toDataURL("image/jpeg", 0.6));
+  }
+
+  private scale(w: number, h: number): number {
+    return Math.min(1, this.maxDim / Math.max(w, h));
   }
 
   private deriveIntrinsics(view: XRView, cam: XRCamera) {
-    // Approximate intrinsics from the projection matrix + camera image size.
+    // Intrinsics must match the DOWNSCALED stored image, so scale them too.
     const p = view.projectionMatrix;
     const w = cam.width;
     const h = cam.height;
-    const fl_x = (p[0]! * w) / 2;
-    const fl_y = (p[5]! * h) / 2;
-    return { fl_x, fl_y, cx: w / 2, cy: h / 2, w, h };
+    const s = this.scale(w, h);
+    return {
+      fl_x: ((p[0]! * w) / 2) * s,
+      fl_y: ((p[5]! * h) / 2) * s,
+      cx: (w / 2) * s,
+      cy: (h / 2) * s,
+      w: Math.round(w * s),
+      h: Math.round(h * s),
+    };
   }
 
   frameCount() {
