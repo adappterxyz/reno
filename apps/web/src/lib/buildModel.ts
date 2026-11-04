@@ -3,8 +3,8 @@ import {
   pointsToSplatPly,
   extractFramesFromVideo,
   datasetFromPhotos,
-  datasetFromJson,
   type NerfDataset,
+  type NerfFrame,
   type TrainingProgress,
 } from "@reno/splat-trainer";
 import { routes } from "@reno/shared";
@@ -23,8 +23,18 @@ export async function datasetFromBlobs(
   kind: "video" | "photos" | "webxr",
 ): Promise<NerfDataset> {
   if (kind === "webxr") {
-    // Phone uploaded a serialized posed dataset (frames + camera poses).
-    return datasetFromJson(await blobs[0]!.text());
+    // blobs[0] = JSON manifest (intrinsics + per-frame poses); blobs[1..] = frame
+    // images in the same order as manifest.frames.
+    const manifest = JSON.parse(await blobs[0]!.text()) as {
+      fl_x: number; fl_y: number; cx: number; cy: number; w: number; h: number;
+      frames: Array<{ transform_matrix: number[][] }>;
+    };
+    const frames: NerfFrame[] = manifest.frames.map((fr, i) => ({
+      file_path: `frame_${i}.jpg`,
+      transform_matrix: fr.transform_matrix,
+      image: blobs[i + 1]!,
+    }));
+    return { fl_x: manifest.fl_x, fl_y: manifest.fl_y, cx: manifest.cx, cy: manifest.cy, w: manifest.w, h: manifest.h, frames, poseSource: "webxr" };
   }
   if (kind === "video") {
     const file = new File([blobs[0]!], "capture.mp4", { type: blobs[0]!.type || "video/mp4" });

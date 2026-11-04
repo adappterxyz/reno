@@ -81,6 +81,22 @@ export async function uploadCaptureMedia(
   return create.key;
 }
 
+/** Phone: single-PUT upload of a small blob (WebXR frame or manifest). Returns the key. */
+export async function uploadCaptureBlob(
+  s: { sessionId: string; token: string; exp: number },
+  blob: Blob,
+  ext: string,
+): Promise<string> {
+  const res = await fetch(`${base()}${routes.captureBlob(s.sessionId)}?${tokenQS(s)}&ext=${ext}`, {
+    method: "PUT",
+    headers: { "Content-Type": blob.type || "application/octet-stream" },
+    body: blob,
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok) throw new Error(json?.error || `Upload failed (HTTP ${res.status})`);
+  return json.data.key as string;
+}
+
 /** Phone: signal capture complete with the uploaded media keys. */
 export function completeCapture(
   s: { sessionId: string; token: string; exp: number },

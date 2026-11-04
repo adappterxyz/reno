@@ -77,6 +77,20 @@ capturePublic.post("/capture/:sessionId/progress", async (c) => {
   return ok(c, { ok: true });
 });
 
+// Simple single-PUT upload for small files (WebXR frames + manifest). Body is the
+// raw bytes; returns the R2 key. Avoids multipart round-trips for many small files.
+capturePublic.put("/capture/:sessionId/blob", async (c) => {
+  const auth = await authSession(c);
+  if (!auth) return err(c, "Invalid session token", 403);
+  const ext = (c.req.query("ext") ?? "bin").replace(/[^a-z0-9]/gi, "");
+  const key = `captures/${auth.sid}/f-${newId()}.${ext}`;
+  const body = await c.req.arrayBuffer();
+  await c.env.SPLATS.put(key, body, {
+    httpMetadata: { contentType: c.req.header("Content-Type") ?? "application/octet-stream" },
+  });
+  return ok(c, { key });
+});
+
 // Multipart upload of captured media to R2 under captures/<sid>/.
 capturePublic.post("/capture/:sessionId/upload/create", async (c) => {
   const auth = await authSession(c);

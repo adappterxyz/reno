@@ -34,6 +34,7 @@ export const routes = {
   captureInfo: (sid: string) => `${API_BASE_PATH}/capture/${sid}`,
   captureWs: (sid: string) => `${API_BASE_PATH}/capture/${sid}/ws`,
   captureProgress: (sid: string) => `${API_BASE_PATH}/capture/${sid}/progress`,
+  captureBlob: (sid: string) => `${API_BASE_PATH}/capture/${sid}/blob`,
   captureUploadCreate: (sid: string) => `${API_BASE_PATH}/capture/${sid}/upload/create`,
   captureUploadPart: (sid: string) => `${API_BASE_PATH}/capture/${sid}/upload/part`,
   captureUploadComplete: (sid: string) => `${API_BASE_PATH}/capture/${sid}/upload/complete`,

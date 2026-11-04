@@ -33,6 +33,7 @@ import { api } from "../api/client.js";
 import { uploadSplatFile } from "../api/upload.js";
 import { config } from "../config.js";
 import { CaptureHandoff } from "./CaptureHandoff.js";
+import { captureWithAR } from "../lib/arCapture.js";
 
 type Method = "phone" | "webxr" | "upload-video" | "upload-photos" | "upload-ply";
 const STEPS = ["Name & method", "Capture / input", "Build", "Upload"];
@@ -59,11 +60,15 @@ export function CreateModelWizard({
   const [progressLabel, setProgressLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const modelRef = useRef<SplatModel | null>(null);
-  const xrRef = useRef<WebXRCapture | null>(null);
 
   useEffect(() => {
     isWebGPUAvailable().then(setWebgpu);
-    new WebXRCapture().isSupported().then(setXrSupported);
+    // On a WebXR-capable device (Android phone), default to on-device AR capture —
+    // no QR handoff needed.
+    new WebXRCapture().isSupported().then((s) => {
+      setXrSupported(s);
+      if (s) setMethod("webxr");
+    });
   }, []);
 
   const fail = (e: unknown) => {
@@ -88,23 +93,14 @@ export function CreateModelWizard({
 
   // --- Capture / input handlers (step 1) ---
 
+  // On-device AR capture with live camera preview (shared helper). Resolves with
+  // the posed dataset when the user taps Finish.
   const runWebXR = async () => {
     try {
-      setBusy(true);
-      const cap = new WebXRCapture();
-      xrRef.current = cap;
-      await cap.start(document.body);
-      // The AR session runs; user taps "Finish" (below) to stop.
-    } catch (e) {
-      fail(e);
-    }
-  };
-
-  const finishWebXR = async () => {
-    try {
-      const ds = await xrRef.current!.stop();
+      setError(null);
+      const ds = await captureWithAR();
+      if (ds.frames.length < 8) throw new Error("Too few frames — walk around more.");
       setDataset(ds);
-      setBusy(false);
       setStep(2);
     } catch (e) {
       fail(e);
@@ -148,9 +144,9 @@ export function CreateModelWizard({
       setBusy(true);
       setError(null);
 
-      // Pose-less input (video/photo upload) -> in-browser SfM -> point-cloud splat.
-      // This runs fully client-side (OpenCV.js) and needs no GPU/Brush worker.
-      if (dataset.poseSource === "sfm") {
+      // sfm = estimate poses (video/photos); webxr = use captured poses. Both run
+      // the in-browser reconstruction (OpenCV.js) -> point-cloud splat. No Brush worker.
+      if (dataset.poseSource === "sfm" || dataset.poseSource === "webxr") {
         const { points } = await runSfmOnDataset(dataset, (p: TrainingProgress) => {
           setProgress(p.progress);
           setProgressLabel(p.message ? `${p.phase}: ${p.message}` : `${p.phase}…`);
@@ -222,10 +218,10 @@ export function CreateModelWizard({
               onChange={(_, v) => v && setMethod(v)}
               fullWidth
             >
-              <ToggleButton value="phone">📱 Capture with phone (scan QR) — recommended</ToggleButton>
               <ToggleButton value="webxr" disabled={!xrSupported}>
-                AR capture (WebXR){xrSupported ? "" : " — not on this device"}
+                📷 AR capture on this device{xrSupported ? "" : " — not supported here"}
               </ToggleButton>
+              <ToggleButton value="phone">📱 Capture with a phone (scan QR from desktop)</ToggleButton>
               <ToggleButton value="upload-video">Upload a video</ToggleButton>
               <ToggleButton value="upload-photos">Upload photos</ToggleButton>
               <ToggleButton value="upload-ply">Upload a pre-trained .ply</ToggleButton>
@@ -248,14 +244,15 @@ export function CreateModelWizard({
               />
             )}
             {method === "webxr" && (
-              <>
-                <Typography>Walk slowly around the room keeping surfaces in view.</Typography>
-                {!busy ? (
-                  <Button variant="contained" onClick={runWebXR}>Start AR capture</Button>
-                ) : (
-                  <Button variant="contained" color="secondary" onClick={finishWebXR}>Finish capture</Button>
-                )}
-              </>
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary">
+                  Tap Start, then walk around the room (move between positions — don't just turn in
+                  place). You'll see the live camera; tap "Finish AR capture" when you've covered it.
+                </Typography>
+                <Button variant="contained" onClick={runWebXR} disabled={busy}>
+                  Start AR capture
+                </Button>
+              </Stack>
             )}
             {method === "upload-video" && (
               <Button variant="contained" component="label">
@@ -282,18 +279,16 @@ export function CreateModelWizard({
           <Stack spacing={2}>
             <Typography>
               {dataset?.frames.length ?? 0} frames ·{" "}
-              {dataset?.poseSource === "sfm"
-                ? "no poses — will run in-browser SfM (OpenCV.js)"
-                : `${dataset?.poseSource} poses — will train with Brush`}
+              {dataset?.poseSource === "webxr"
+                ? "AR camera poses — direct reconstruction"
+                : "no poses — in-browser SfM (OpenCV.js)"}
             </Typography>
-            {dataset?.poseSource === "sfm" && (
-              <Typography variant="caption" color="text.secondary">
-                Spike quality: produces a sparse colored point-cloud splat (no densification yet).
-                Best with a slow, overlapping pan around the space.
-              </Typography>
-            )}
+            <Typography variant="caption" color="text.secondary">
+              Produces a colored point-cloud splat (no densification yet). Best with lots of
+              movement and overlap around the space.
+            </Typography>
             <Button variant="contained" onClick={train} disabled={busy}>
-              {dataset?.poseSource === "sfm" ? "Reconstruct 3D model" : "Train splat on-device"}
+              Reconstruct 3D model
             </Button>
             {busy && <LinearProgress variant="determinate" value={progress * 100} />}
             {progressLabel && <Typography variant="caption">{progressLabel}</Typography>}

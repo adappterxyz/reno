@@ -15,9 +15,10 @@ import VideocamIcon from "@mui/icons-material/Videocam";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import { WebXRCapture, datasetToJson } from "@reno/splat-trainer";
+import { WebXRCapture } from "@reno/splat-trainer";
 import {
   uploadCaptureMedia,
+  uploadCaptureBlob,
   completeCapture,
   reportCaptureProgress,
   type CaptureSession,
@@ -109,11 +110,28 @@ export function MobileCapture() {
       removeOverlay();
       const dataset = await cap.stop();
       if (dataset.frames.length < 8) throw new Error("Too few frames captured — walk around more.");
-      await reportCaptureProgress(session, { status: "uploading", message: "Uploading AR capture…" });
-      const json = await datasetToJson(dataset);
-      const blob = new Blob([json], { type: "application/json" });
-      const key = await uploadCaptureMedia(session, blob, "json", setProgress);
-      await completeCapture(session, [key], "webxr");
+      await reportCaptureProgress(session, { status: "uploading", message: "Uploading frames…" });
+
+      // Upload each frame as its own small file (resilient on phones), then a
+      // tiny manifest of intrinsics + poses (in the same order as the frames).
+      const frameKeys: string[] = [];
+      const total = dataset.frames.length + 1;
+      for (let i = 0; i < dataset.frames.length; i++) {
+        frameKeys.push(await uploadCaptureBlob(session, dataset.frames[i]!.image, "jpg"));
+        setProgress((i + 1) / total);
+      }
+      const manifest = {
+        fl_x: dataset.fl_x, fl_y: dataset.fl_y, cx: dataset.cx, cy: dataset.cy,
+        w: dataset.w, h: dataset.h, poseSource: "webxr",
+        frames: dataset.frames.map((f) => ({ transform_matrix: f.transform_matrix })),
+      };
+      const manifestKey = await uploadCaptureBlob(
+        session,
+        new Blob([JSON.stringify(manifest)], { type: "application/json" }),
+        "json",
+      );
+      setProgress(1);
+      await completeCapture(session, [manifestKey, ...frameKeys], "webxr");
       setDone(true);
     } catch (e) {
       setError((e as Error).message);
