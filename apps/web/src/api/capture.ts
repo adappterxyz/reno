@@ -97,6 +97,41 @@ export async function uploadCaptureBlob(
   return json.data.key as string;
 }
 
+/**
+ * Persist a captured posed dataset (WebXR) to a model's cloud storage so it can
+ * be (re)built later on any device. Creates a session, uploads each frame as a
+ * small file + a poses manifest, and marks it complete. Mirrors the phone→desktop
+ * handoff but for on-device capture.
+ */
+export async function persistDatasetToModel(
+  modelId: string,
+  dataset: {
+    fl_x: number; fl_y: number; cx: number; cy: number; w: number; h: number;
+    frames: Array<{ transform_matrix: number[][]; image: Blob }>;
+  },
+  onProgress?: (f: number) => void,
+): Promise<void> {
+  const session = await createCaptureSession(modelId);
+  const frameKeys: string[] = [];
+  const total = dataset.frames.length + 1;
+  for (let i = 0; i < dataset.frames.length; i++) {
+    frameKeys.push(await uploadCaptureBlob(session, dataset.frames[i]!.image, "jpg"));
+    onProgress?.((i + 1) / total);
+  }
+  const manifest = {
+    fl_x: dataset.fl_x, fl_y: dataset.fl_y, cx: dataset.cx, cy: dataset.cy,
+    w: dataset.w, h: dataset.h, poseSource: "webxr",
+    frames: dataset.frames.map((f) => ({ transform_matrix: f.transform_matrix })),
+  };
+  const manifestKey = await uploadCaptureBlob(
+    session,
+    new Blob([JSON.stringify(manifest)], { type: "application/json" }),
+    "json",
+  );
+  onProgress?.(1);
+  await completeCapture(session, [manifestKey, ...frameKeys], "webxr");
+}
+
 /** Phone: signal capture complete with the uploaded media keys. */
 export function completeCapture(
   s: { sessionId: string; token: string; exp: number },

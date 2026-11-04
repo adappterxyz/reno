@@ -34,6 +34,7 @@ import { uploadSplatFile } from "../api/upload.js";
 import { config } from "../config.js";
 import { CaptureHandoff } from "./CaptureHandoff.js";
 import { captureWithAR } from "../lib/arCapture.js";
+import { persistDatasetToModel } from "../api/capture.js";
 
 type Method = "phone" | "webxr" | "upload-video" | "upload-photos" | "upload-ply";
 const STEPS = ["Name & method", "Capture / input", "Build", "Upload"];
@@ -93,14 +94,18 @@ export function CreateModelWizard({
 
   // --- Capture / input handlers (step 1) ---
 
-  // On-device AR capture with live camera preview (shared helper). Resolves with
-  // the posed dataset when the user taps Finish.
+  // On-device AR capture with live camera preview (shared helper). Captures, then
+  // saves the posed frames to the cloud so the build can run here OR on a PC later.
   const runWebXR = async () => {
     try {
       setError(null);
       const ds = await captureWithAR();
       if (ds.frames.length < 8) throw new Error("Too few frames — walk around more.");
+      setBusy(true);
+      setProgressLabel("Saving capture to the cloud…");
+      await persistDatasetToModel(modelRef.current!.id, ds, setProgress);
       setDataset(ds);
+      setBusy(false);
       setStep(2);
     } catch (e) {
       fail(e);
@@ -284,8 +289,9 @@ export function CreateModelWizard({
                 : "no poses — in-browser SfM (OpenCV.js)"}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Produces a colored point-cloud splat (no densification yet). Best with lots of
-              movement and overlap around the space.
+              {dataset?.poseSource === "webxr"
+                ? "Saved to the cloud. Building is heavy — you can build here, or close this and click \"Build\" on this model from your computer (faster)."
+                : "Produces a colored point-cloud splat. Best with lots of movement and overlap."}
             </Typography>
             <Button variant="contained" onClick={train} disabled={busy}>
               Reconstruct 3D model
