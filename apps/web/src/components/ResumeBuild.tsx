@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Alert,
+  Box,
   Button,
   Dialog,
   DialogActions,
@@ -10,16 +11,14 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import {
-  downloadModelMedia,
-  datasetFromBlobs,
-  buildSplatFromDataset,
-  type BuildProgress,
-} from "../lib/buildModel.js";
+import { downloadModelMedia } from "../lib/buildModel.js";
+import { trainSplat, mediaToImageFiles, type TrainProgress } from "../lib/splatTrain.js";
+import { uploadSplatFile } from "../api/upload.js";
 
 /**
- * Resume a model build from media already uploaded by the phone — no re-capture.
- * Downloads the stored media, runs in-browser SfM, and uploads the splat.
+ * Build a model from its stored capture media using real in-browser Gaussian-splat
+ * training (Splat.js / WebGPU) — SfM + training -> photoreal .ply. Runs best on a
+ * desktop GPU. The trainer renders live into the canvas as it optimizes.
  */
 export function ResumeBuild({
   modelId,
@@ -34,19 +33,22 @@ export function ResumeBuild({
   const [progress, setProgress] = useState(0);
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const run = async () => {
     setBusy(true);
     setError(null);
     try {
-      setLabel("Fetching captured media…");
+      setLabel("Fetching captured frames…");
       const { blobs, kind } = await downloadModelMedia(modelId);
-      setLabel("Extracting frames…");
-      const dataset = await datasetFromBlobs(blobs, kind);
-      await buildSplatFromDataset(modelId, dataset, (p: BuildProgress) => {
+      const images = await mediaToImageFiles(blobs, kind);
+      if (images.length < 8) throw new Error(`Only ${images.length} frames — capture more coverage.`);
+      const ply = await trainSplat(images, canvasRef.current!, (p: TrainProgress) => {
         setProgress(p.progress);
-        setLabel(p.message ? `${p.phase}: ${p.message}` : p.phase);
+        setLabel(p.message ?? p.phase);
       });
+      setLabel("Uploading splat…");
+      await uploadSplatFile(modelId, ply, "ply", setProgress);
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -57,14 +59,32 @@ export function ResumeBuild({
 
   return (
     <Dialog open onClose={busy ? undefined : onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Build from captured media</DialogTitle>
+      <DialogTitle>Build 3D model (WebGPU training)</DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Reconstructs the 3D model from the media your phone already uploaded — no need to
-            re-capture. Runs in-browser SfM (best on desktop).
+            Trains a real Gaussian splat from your captured frames, in-browser via WebGPU. This is
+            compute-heavy — best on a desktop with a decent GPU, and it can take a few minutes.
           </Typography>
           {error && <Alert severity="error">{error}</Alert>}
+          {/* Live training preview */}
+          <Box
+            sx={{
+              width: "100%",
+              aspectRatio: "16 / 10",
+              bgcolor: "#1a1d22",
+              borderRadius: 2,
+              overflow: "hidden",
+              display: busy ? "block" : "none",
+            }}
+          >
+            <canvas
+              ref={canvasRef}
+              width={960}
+              height={600}
+              style={{ width: "100%", height: "100%", display: "block" }}
+            />
+          </Box>
           {busy && (
             <>
               <LinearProgress variant="determinate" value={progress * 100} />
@@ -78,7 +98,7 @@ export function ResumeBuild({
           Cancel
         </Button>
         <Button variant="contained" onClick={run} disabled={busy}>
-          {busy ? "Building…" : "Build now"}
+          {busy ? "Training…" : "Build now"}
         </Button>
       </DialogActions>
     </Dialog>

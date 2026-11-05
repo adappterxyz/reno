@@ -23,15 +23,16 @@
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "splat.js": "github:arrival-space/splat.js"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.14",
     "@types/react-dom": "^18.3.3",
     "@types/webxr": "^0.5.20",
-    "@webgpu/types": "^0.1.52",
     "@vitejs/plugin-react": "^4.3.4",
+    "@webgpu/types": "^0.1.52",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "wrangler": "^4.80.0"
