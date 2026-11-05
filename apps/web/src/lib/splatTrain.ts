@@ -18,7 +18,15 @@ export async function trainSplat(
   onProgress: (p: TrainProgress) => void,
   maxIters = 20000,
 ): Promise<Blob> {
-  const session = createSession({ maxIters });
+  // Conservative settings so each GPU submission stays under the Windows GPU
+  // watchdog (~2s) — default itersPerFrame=15 at full res causes DXGI_DEVICE_HUNG.
+  const session = createSession({
+    maxIters,
+    itersPerFrame: 4, // fewer training steps per GPU submit
+    initTarget: 20000, // fewer initial gaussians
+    frames: { trainMaxDim: 720 }, // lower training resolution
+    lowMem: true,
+  });
 
   session.on("stage", (e) => {
     const frac = e.total ? e.done / e.total : 0;

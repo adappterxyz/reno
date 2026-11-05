@@ -29,6 +29,14 @@ declare module "splat.js" {
     exportPlyBlob(): Promise<Blob>;
     view: { attach(canvas: HTMLCanvasElement): void };
   }
-  export function createSession(opts?: { maxIters?: number; frames?: unknown }): Session;
+  export function createSession(opts?: {
+    maxIters?: number;
+    itersPerFrame?: number;
+    initTarget?: number;
+    lowMem?: boolean;
+    frames?: { trainMaxDim?: number; alphaMask?: boolean };
+    sfm?: unknown;
+    trainer?: unknown;
+  }): Session;
   export function parseCameras(json: unknown): unknown;
 }
