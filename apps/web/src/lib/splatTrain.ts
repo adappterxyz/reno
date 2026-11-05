@@ -22,9 +22,9 @@ export async function trainSplat(
   // watchdog (~2s) — default itersPerFrame=15 at full res causes DXGI_DEVICE_HUNG.
   const session = createSession({
     maxIters,
-    itersPerFrame: 4, // fewer training steps per GPU submit
-    initTarget: 20000, // fewer initial gaussians
-    frames: { trainMaxDim: 720 }, // lower training resolution
+    itersPerFrame: 1, // one training step per GPU submit — safest vs the GPU watchdog
+    initTarget: 8000, // few initial gaussians
+    frames: { trainMaxDim: 480, featMaxDim: 640 }, // low training + feature resolution
     lowMem: true,
   });
 
@@ -71,6 +71,11 @@ export async function mediaToImageFiles(
     return images.map((im, i) => new File([im.image], `f_${i}.jpg`, { type: "image/jpeg" }));
   }
   // webxr: blobs[0] is the poses manifest (json) -> skip it; rest are frames.
-  const frameBlobs = kind === "webxr" ? blobs.slice(1) : blobs;
+  let frameBlobs = kind === "webxr" ? blobs.slice(1) : blobs;
+  // Cap frames (evenly) — fewer frames = far less SfM + training GPU work.
+  const CAP = 24;
+  if (frameBlobs.length > CAP) {
+    frameBlobs = Array.from({ length: CAP }, (_, i) => frameBlobs[Math.round((i * (frameBlobs.length - 1)) / (CAP - 1))]!);
+  }
   return frameBlobs.map((b, i) => new File([b], `f_${i}.jpg`, { type: b.type || "image/jpeg" }));
 }

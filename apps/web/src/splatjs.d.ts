@@ -34,7 +34,7 @@ declare module "splat.js" {
     itersPerFrame?: number;
     initTarget?: number;
     lowMem?: boolean;
-    frames?: { trainMaxDim?: number; alphaMask?: boolean };
+    frames?: { trainMaxDim?: number; featMaxDim?: number; alphaMask?: boolean };
     sfm?: unknown;
     trainer?: unknown;
   }): Session;
